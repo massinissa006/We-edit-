@@ -1,0 +1,438 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "Mission de montage vidéo rémunérée en Dinars Algériens (DZD).",
+      "type": "object",
+      "properties": {
+        "ID_Tache": {
+          "type": "string",
+          "description": "Identifiant lisible de la tâche (ex: T-001)",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "Titre_Projet": {
+          "type": "string",
+          "description": "Titre du projet vidéo",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "Style_Montage": {
+          "type": "string",
+          "description": "Style de montage (ex: Reels / Dynamique, Cinématique, Vlog, Gaming)",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "Duree_Video": {
+          "type": "string",
+          "description": "Durée estimée de la vidéo finale (ex: 01:30)",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "Deadline": {
+          "type": "string",
+          "description": "Date limite de livraison au format YYYY-MM-DD",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "Prix_DZD": {
+          "type": "integer",
+          "description": "Rémunération en Dinars Algériens (entier positif)"
+        },
+        "Statut": {
+          "type": "string",
+          "description": "Statut de la mission",
+          "enum": [
+            "Ouverte",
+            "Assigned",
+            "In progress",
+            "First draft delivered",
+            "Reediting",
+            "Delivered",
+            "Done"
+          ]
+        },
+        "Monteur_Valide_Email": {
+          "type": "string",
+          "description": "Identifiant (téléphone normalisé) du monteur retenu (chaîne vide si Ouverte)",
+          "maxLength": 254
+        },
+        "Monteur_Valide_Nom": {
+          "type": "string",
+          "description": "Nom du monteur retenu (chaîne vide si Ouverte)",
+          "maxLength": 120
+        },
+        "Monteur_Cred_Id": {
+          "type": "string",
+          "description": "Identifiant hashé du monteur ayant accepté la mission (chaîne vide si Ouverte)",
+          "maxLength": 80
+        },
+        "Lien_Fichiers": {
+          "type": "string",
+          "description": "URL Google Drive vers les rushs",
+          "minLength": 8,
+          "maxLength": 1000,
+          "pattern": "^https?://.*"
+        },
+        "Visibilite": {
+          "type": "string",
+          "description": "Audience autorisée à voir et accepter la mission",
+          "enum": ["Tous", "Selection"]
+        },
+        "Monteurs_Autorises": {
+          "type": "array",
+          "description": "Liste bornée des numéros de téléphone normalisés autorisés lorsque Visibilite = Selection (vide si Tous)"
+        },
+        "Ouverte_Pour_Tous": {
+          "type": "boolean",
+          "description": "True uniquement lorsque Statut == Ouverte et Visibilite == Tous"
+        },
+        "Claim_Deadline_Ms": {
+          "type": "integer",
+          "description": "Timestamp (ms) limite des 5 minutes pour contacter l'admin sur WhatsApp (0 si non applicable)"
+        },
+        "WhatsApp_Contacte": {
+          "type": "boolean",
+          "description": "True dès que le monteur a cliqué pour envoyer le message WhatsApp au chef monteur"
+        },
+        "Chef_Monteur_Confirme": {
+          "type": "boolean",
+          "description": "True dès que le chef monteur (admin) a confirmé la mission sur le Dashboard pour autoriser le démarrage"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Horodatage serveur de création"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Horodatage serveur de dernière mise à jour"
+        }
+      },
+      "required": [
+        "ID_Tache",
+        "Titre_Projet",
+        "Style_Montage",
+        "Duree_Video",
+        "Deadline",
+        "Prix_DZD",
+        "Statut",
+        "Monteur_Valide_Email",
+        "Monteur_Valide_Nom",
+        "Monteur_Cred_Id",
+        "Lien_Fichiers",
+        "Visibilite",
+        "Monteurs_Autorises",
+        "Ouverte_Pour_Tous",
+        "Claim_Deadline_Ms",
+        "WhatsApp_Contacte",
+        "Chef_Monteur_Confirme",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MonteurAccount": {
+      "title": "MonteurAccount",
+      "description": "Annuaire administrateur des monteurs vidéo et de leurs codes d'accès.",
+      "type": "object",
+      "properties": {
+        "nom": {
+          "type": "string",
+          "description": "Nom complet du monteur",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Numéro de téléphone normalisé servant d'identifiant",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^[0-9+]+$"
+        },
+        "accessCode": {
+          "type": "string",
+          "description": "Code d'accès attribué par l'administrateur",
+          "minLength": 4,
+          "maxLength": 32
+        },
+        "credId": {
+          "type": "string",
+          "description": "Hash SHA-256 du couple téléphone:code d'accès",
+          "pattern": "^cred_[a-f0-9]{64}$"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Indique si le compte monteur est actif"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Adresse e-mail du monteur pour les notifications de missions",
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "nom",
+        "phone",
+        "accessCode",
+        "credId",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MonteurCredential": {
+      "title": "MonteurCredential",
+      "description": "Jeton d'authentification hashé permettant au monteur de vérifier son numéro, son code d'accès et sa disponibilité.",
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 32
+        },
+        "nom": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "disponible": {
+          "type": "boolean",
+          "description": "Indique si le monteur se déclare disponible pour recevoir de nouvelles missions"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["phone", "nom", "active", "disponible", "createdAt", "updatedAt"]
+    },
+    "TaskInvite": {
+      "title": "TaskInvite",
+      "description": "Invitation privée pour une mission ciblée vers un monteur spécifique.",
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ID_Tache": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "Titre_Projet": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "Style_Montage": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "Duree_Video": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "Deadline": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "Prix_DZD": {
+          "type": "integer"
+        },
+        "Lien_Fichiers": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 1000,
+          "pattern": "^https?://.*"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "taskId",
+        "ID_Tache",
+        "Titre_Projet",
+        "Style_Montage",
+        "Duree_Video",
+        "Deadline",
+        "Prix_DZD",
+        "Lien_Fichiers",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AssignedMission": {
+      "title": "AssignedMission",
+      "description": "Copie atomique d'une mission acceptée directement par le monteur.",
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ID_Tache": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "Titre_Projet": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "Style_Montage": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "Duree_Video": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "Deadline": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "Prix_DZD": {
+          "type": "integer"
+        },
+        "Statut": {
+          "type": "string",
+          "enum": [
+            "Assigned",
+            "In progress",
+            "First draft delivered",
+            "Reediting",
+            "Delivered",
+            "Done"
+          ]
+        },
+        "Lien_Fichiers": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 1000,
+          "pattern": "^https?://.*"
+        },
+        "Visibilite": {
+          "type": "string",
+          "enum": ["Tous", "Selection"]
+        },
+        "Claim_Deadline_Ms": {
+          "type": "integer"
+        },
+        "WhatsApp_Contacte": {
+          "type": "boolean"
+        },
+        "Chef_Monteur_Confirme": {
+          "type": "boolean",
+          "description": "True dès que le chef monteur a confirmé sur le Dashboard"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "taskId",
+        "ID_Tache",
+        "Titre_Projet",
+        "Style_Montage",
+        "Duree_Video",
+        "Deadline",
+        "Prix_DZD",
+        "Statut",
+        "Lien_Fichiers",
+        "Visibilite",
+        "Claim_Deadline_Ms",
+        "WhatsApp_Contacte",
+        "Chef_Monteur_Confirme",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "HiddenPreference": {
+      "title": "HiddenPreference",
+      "description": "Liste des tâches ignorées ou masquées par un monteur.",
+      "type": "object",
+      "properties": {
+        "hiddenTaskIds": {
+          "type": "array",
+          "description": "Liste bornée des IDs de tâches masquées"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["hiddenTaskIds", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Collection principale des missions de montage vidéo."
+    },
+    "/monteur_accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/MonteurAccount" },
+      "description": "Annuaire administrateur des monteurs et codes d'accès."
+    },
+    "/monteur_credentials/{credId}": {
+      "schema": { "$ref": "#/entities/MonteurCredential" },
+      "description": "Documents d'authentification hashés par téléphone et code d'accès."
+    },
+    "/monteur_credentials/{credId}/invites/{taskId}": {
+      "schema": { "$ref": "#/entities/TaskInvite" },
+      "description": "Missions ciblées affichées uniquement aux monteurs sélectionnés."
+    },
+    "/monteur_credentials/{credId}/missions/{taskId}": {
+      "schema": { "$ref": "#/entities/AssignedMission" },
+      "description": "Missions acceptées directement par le monteur et synchronisées avec l'administrateur."
+    },
+    "/monteur_credentials/{credId}/prefs/{prefId}": {
+      "schema": { "$ref": "#/entities/HiddenPreference" },
+      "description": "Préférences des missions masquées par ce monteur."
+    }
+  }
+}

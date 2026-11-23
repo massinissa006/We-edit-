@@ -1,0 +1,6 @@
+{
+  "name": "Portail Monteurs Vidéo",
+  "description": "Plateforme de gestion, d'attribution et de suivi de missions de montage vidéo rémunérées en Dinars Algériens (DZD).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

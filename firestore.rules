@@ -1,0 +1,658 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Global Helpers
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true && request.auth.token.email is string;
+    }
+
+    function authEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && authEmail() == 'massinissa@bmsinformatique.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCredId(id) {
+      return id is string && id.size() == 69 && id.matches('^cred_[a-f0-9]{64}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints
+    // =========================================================================
+    function isValidTask(data) {
+      return data.keys().hasAll([
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Statut',
+        'Monteur_Valide_Email',
+        'Monteur_Valide_Nom',
+        'Monteur_Cred_Id',
+        'Lien_Fichiers',
+        'Visibilite',
+        'Monteurs_Autorises',
+        'Ouverte_Pour_Tous',
+        'Claim_Deadline_Ms',
+        'WhatsApp_Contacte',
+        'Chef_Monteur_Confirme',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Statut',
+        'Monteur_Valide_Email',
+        'Monteur_Valide_Nom',
+        'Monteur_Cred_Id',
+        'Lien_Fichiers',
+        'Visibilite',
+        'Monteurs_Autorises',
+        'Ouverte_Pour_Tous',
+        'Claim_Deadline_Ms',
+        'WhatsApp_Contacte',
+        'Chef_Monteur_Confirme',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.ID_Tache is string && data.ID_Tache.size() >= 2 && data.ID_Tache.size() <= 32 && data.ID_Tache.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.Titre_Projet is string && data.Titre_Projet.size() >= 2 && data.Titre_Projet.size() <= 160
+      && data.Style_Montage is string && data.Style_Montage.size() >= 2 && data.Style_Montage.size() <= 80
+      && data.Duree_Video is string && data.Duree_Video.size() >= 1 && data.Duree_Video.size() <= 20
+      && data.Deadline is string && data.Deadline.size() >= 4 && data.Deadline.size() <= 20 && data.Deadline.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      && data.Prix_DZD is int && data.Prix_DZD >= 0 && data.Prix_DZD <= 100000000
+      && data.Statut is string && data.Statut in [
+        'Ouverte',
+        'Assigned',
+        'In progress',
+        'First draft delivered',
+        'Reediting',
+        'Delivered',
+        'Done'
+      ]
+      && data.Monteur_Valide_Email is string && data.Monteur_Valide_Email.size() <= 254
+      && data.Monteur_Valide_Nom is string && data.Monteur_Valide_Nom.size() <= 120
+      && data.Monteur_Cred_Id is string && data.Monteur_Cred_Id.size() <= 80
+      && data.Claim_Deadline_Ms is int && data.Claim_Deadline_Ms >= 0 && data.Claim_Deadline_Ms <= 9999999999999
+      && data.WhatsApp_Contacte is bool
+      && data.Chef_Monteur_Confirme is bool
+      && (
+        (data.Statut == 'Ouverte' && data.Monteur_Valide_Email == '' && data.Monteur_Valide_Nom == '' && data.Monteur_Cred_Id == '' && data.Claim_Deadline_Ms == 0 && data.WhatsApp_Contacte == false && data.Chef_Monteur_Confirme == false) ||
+        (data.Statut in ['Assigned', 'In progress', 'First draft delivered', 'Reediting', 'Delivered', 'Done'] && data.Monteur_Valide_Email.size() >= 3 && isValidCredId(data.Monteur_Cred_Id))
+      )
+      && data.Lien_Fichiers is string && data.Lien_Fichiers.size() >= 8 && data.Lien_Fichiers.size() <= 1000 && data.Lien_Fichiers.matches('^https?://.*')
+      && data.Visibilite is string && data.Visibilite in ['Tous', 'Selection']
+      && data.Monteurs_Autorises is list
+      && data.Monteurs_Autorises.size() <= 50
+      && (data.Monteurs_Autorises.size() == 0 || (data.Monteurs_Autorises[0] is string && data.Monteurs_Autorises[0].size() >= 6 && data.Monteurs_Autorises[0].size() <= 32))
+      && (
+        (data.Visibilite == 'Tous' && data.Monteurs_Autorises.size() == 0) ||
+        (data.Visibilite == 'Selection' && data.Monteurs_Autorises.size() >= 1)
+      )
+      && data.Ouverte_Pour_Tous is bool
+      && data.Ouverte_Pour_Tous == (data.Statut == 'Ouverte' && data.Visibilite == 'Tous')
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidMonteurAccount(data) {
+      return data.keys().hasAll([
+        'nom',
+        'phone',
+        'accessCode',
+        'credId',
+        'active',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'nom',
+        'phone',
+        'accessCode',
+        'credId',
+        'active',
+        'email',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.nom is string && data.nom.size() >= 2 && data.nom.size() <= 120
+      && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 32 && data.phone.matches('^[0-9+]+$')
+      && data.accessCode is string && data.accessCode.size() >= 4 && data.accessCode.size() <= 32
+      && isValidCredId(data.credId)
+      && data.active is bool
+      && (!('email' in data) || (
+        data.email is string
+        && data.email.size() <= 254
+        && (data.email == '' || data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'))
+      ))
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidMonteurCredential(data) {
+      return data.keys().hasAll([
+        'phone',
+        'nom',
+        'active',
+        'disponible',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'phone',
+        'nom',
+        'active',
+        'disponible',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 32 && data.phone.matches('^[0-9+]+$')
+      && data.nom is string && data.nom.size() >= 2 && data.nom.size() <= 120
+      && data.active is bool
+      && data.disponible is bool
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidTaskInvite(data) {
+      return data.keys().hasAll([
+        'taskId',
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Lien_Fichiers',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'taskId',
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Lien_Fichiers',
+        'createdAt',
+        'updatedAt'
+      ])
+      && isValidId(data.taskId)
+      && data.ID_Tache is string && data.ID_Tache.size() >= 2 && data.ID_Tache.size() <= 32 && data.ID_Tache.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.Titre_Projet is string && data.Titre_Projet.size() >= 2 && data.Titre_Projet.size() <= 160
+      && data.Style_Montage is string && data.Style_Montage.size() >= 2 && data.Style_Montage.size() <= 80
+      && data.Duree_Video is string && data.Duree_Video.size() >= 1 && data.Duree_Video.size() <= 20
+      && data.Deadline is string && data.Deadline.size() >= 4 && data.Deadline.size() <= 20 && data.Deadline.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      && data.Prix_DZD is int && data.Prix_DZD >= 0 && data.Prix_DZD <= 100000000
+      && data.Lien_Fichiers is string && data.Lien_Fichiers.size() >= 8 && data.Lien_Fichiers.size() <= 1000 && data.Lien_Fichiers.matches('^https?://.*')
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidAssignedMission(data) {
+      return data.keys().hasAll([
+        'taskId',
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Statut',
+        'Lien_Fichiers',
+        'Visibilite',
+        'Claim_Deadline_Ms',
+        'WhatsApp_Contacte',
+        'Chef_Monteur_Confirme',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'taskId',
+        'ID_Tache',
+        'Titre_Projet',
+        'Style_Montage',
+        'Duree_Video',
+        'Deadline',
+        'Prix_DZD',
+        'Statut',
+        'Lien_Fichiers',
+        'Visibilite',
+        'Claim_Deadline_Ms',
+        'WhatsApp_Contacte',
+        'Chef_Monteur_Confirme',
+        'createdAt',
+        'updatedAt'
+      ])
+      && isValidId(data.taskId)
+      && data.ID_Tache is string && data.ID_Tache.size() >= 2 && data.ID_Tache.size() <= 32 && data.ID_Tache.matches('^[a-zA-Z0-9_\\-]+$')
+      && data.Titre_Projet is string && data.Titre_Projet.size() >= 2 && data.Titre_Projet.size() <= 160
+      && data.Style_Montage is string && data.Style_Montage.size() >= 2 && data.Style_Montage.size() <= 80
+      && data.Duree_Video is string && data.Duree_Video.size() >= 1 && data.Duree_Video.size() <= 20
+      && data.Deadline is string && data.Deadline.size() >= 4 && data.Deadline.size() <= 20
+      && data.Prix_DZD is int && data.Prix_DZD >= 0 && data.Prix_DZD <= 100000000
+      && data.Statut is string && data.Statut in [
+        'Assigned',
+        'In progress',
+        'First draft delivered',
+        'Reediting',
+        'Delivered',
+        'Done'
+      ]
+      && data.Lien_Fichiers is string && data.Lien_Fichiers.size() >= 8 && data.Lien_Fichiers.size() <= 1000 && data.Lien_Fichiers.matches('^https?://.*')
+      && data.Visibilite is string && data.Visibilite in ['Tous', 'Selection']
+      && data.Claim_Deadline_Ms is int && data.Claim_Deadline_Ms >= 0 && data.Claim_Deadline_Ms <= 9999999999999
+      && data.WhatsApp_Contacte is bool
+      && data.Chef_Monteur_Confirme is bool
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidHiddenPref(data) {
+      return data.keys().hasAll(['hiddenTaskIds', 'updatedAt'])
+        && data.keys().hasOnly(['hiddenTaskIds', 'updatedAt'])
+        && data.hiddenTaskIds is list
+        && data.hiddenTaskIds.size() <= 500
+        && (data.hiddenTaskIds.size() == 0 || (data.hiddenTaskIds[0] is string && data.hiddenTaskIds[0].size() <= 128))
+        && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // Collection: /tasks/{taskId}
+    // =========================================================================
+    match /tasks/{taskId} {
+      allow get: if isAdmin() || (
+        isValidId(taskId) &&
+        existing().Ouverte_Pour_Tous == true
+      );
+
+      allow list: if isAdmin() || resource.data.Ouverte_Pour_Tous == true;
+
+      allow create: if isAdmin()
+        && isValidId(taskId)
+        && isValidTask(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(taskId) && isValidTask(incoming()) && (
+        (
+          isAdmin()
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'ID_Tache',
+            'Titre_Projet',
+            'Style_Montage',
+            'Duree_Video',
+            'Deadline',
+            'Prix_DZD',
+            'Statut',
+            'Monteur_Valide_Email',
+            'Monteur_Valide_Nom',
+            'Monteur_Cred_Id',
+            'Lien_Fichiers',
+            'Visibilite',
+            'Monteurs_Autorises',
+            'Ouverte_Pour_Tous',
+            'Claim_Deadline_Ms',
+            'WhatsApp_Contacte',
+            'Chef_Monteur_Confirme',
+            'updatedAt'
+          ])
+        ) || (
+          // Action 1: Direct mission acceptance with 5-minute WhatsApp contact window (Ouverte -> Assigned)
+          existing().Statut == 'Ouverte'
+          && incoming().Statut == 'Assigned'
+          && incoming().Ouverte_Pour_Tous == false
+          && incoming().WhatsApp_Contacte == false
+          && incoming().Chef_Monteur_Confirme == false
+          && incoming().Claim_Deadline_Ms >= request.time.toMillis() + 240000
+          && incoming().Claim_Deadline_Ms <= request.time.toMillis() + 360000
+          && incoming().Visibilite == existing().Visibilite
+          && incoming().Monteurs_Autorises == existing().Monteurs_Autorises
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'Statut',
+            'Monteur_Valide_Email',
+            'Monteur_Valide_Nom',
+            'Monteur_Cred_Id',
+            'Ouverte_Pour_Tous',
+            'Claim_Deadline_Ms',
+            'WhatsApp_Contacte',
+            'Chef_Monteur_Confirme',
+            'updatedAt'
+          ])
+          && isValidCredId(incoming().Monteur_Cred_Id)
+          && exists(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id))
+          && get(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id)).data.active == true
+          && incoming().Monteur_Valide_Email == get(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id)).data.phone
+          && incoming().Monteur_Valide_Nom == get(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id)).data.nom
+          && (
+            existing().Visibilite == 'Tous' || (
+              existing().Visibilite == 'Selection'
+              && incoming().Monteur_Valide_Email in existing().Monteurs_Autorises
+              && exists(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id)/invites/$(taskId))
+            )
+          )
+          && existsAfter(/databases/$(database)/documents/monteur_credentials/$(incoming().Monteur_Cred_Id)/missions/$(taskId))
+        ) || (
+          // Action 2: Monteur confirms WhatsApp contact to keep the mission
+          existing().Statut in ['Assigned', 'In progress', 'En cours']
+          && incoming().Statut in ['Assigned', 'In progress']
+          && (
+            (existing().Statut == 'En cours' && incoming().Statut == 'Assigned') ||
+            (existing().Statut in ['Assigned', 'In progress'] && incoming().Statut == existing().Statut)
+          )
+          && existing().WhatsApp_Contacte == false
+          && incoming().WhatsApp_Contacte == true
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['Statut', 'WhatsApp_Contacte', 'updatedAt'])
+          && isValidCredId(existing().Monteur_Cred_Id)
+          && exists(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id))
+          && get(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)).data.active == true
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.WhatsApp_Contacte == true
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.Statut == incoming().Statut
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.updatedAt == request.time
+        ) || (
+          // Action 3: Monteur signals they started editing (Assigned -> In progress only, after WhatsApp sent AND Chef Monteur confirmed)
+          existing().Statut in ['Assigned', 'En cours']
+          && existing().WhatsApp_Contacte == true
+          && existing().Chef_Monteur_Confirme == true
+          && incoming().Statut == 'In progress'
+          && incoming().Claim_Deadline_Ms == 0
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['Statut', 'Claim_Deadline_Ms', 'updatedAt'])
+          && isValidCredId(existing().Monteur_Cred_Id)
+          && exists(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id))
+          && get(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)).data.active == true
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.Statut == 'In progress'
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.Claim_Deadline_Ms == 0
+          && getAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId)).data.updatedAt == request.time
+        ) || (
+          // Action 4: Automatic reopen after 5-minute window expires without WhatsApp message
+          existing().Statut in ['Assigned', 'En cours']
+          && existing().WhatsApp_Contacte == false
+          && existing().Claim_Deadline_Ms > 0
+          && request.time.toMillis() >= existing().Claim_Deadline_Ms
+          && incoming().Statut == 'Ouverte'
+          && incoming().Ouverte_Pour_Tous == (existing().Visibilite == 'Tous')
+          && incoming().Monteur_Valide_Email == ''
+          && incoming().Monteur_Valide_Nom == ''
+          && incoming().Monteur_Cred_Id == ''
+          && incoming().Claim_Deadline_Ms == 0
+          && incoming().WhatsApp_Contacte == false
+          && incoming().Chef_Monteur_Confirme == false
+          && incoming().Visibilite == existing().Visibilite
+          && incoming().Monteurs_Autorises == existing().Monteurs_Autorises
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'Statut',
+            'Monteur_Valide_Email',
+            'Monteur_Valide_Nom',
+            'Monteur_Cred_Id',
+            'Ouverte_Pour_Tous',
+            'Claim_Deadline_Ms',
+            'WhatsApp_Contacte',
+            'Chef_Monteur_Confirme',
+            'updatedAt'
+          ])
+          && isValidCredId(existing().Monteur_Cred_Id)
+          && !existsAfter(/databases/$(database)/documents/monteur_credentials/$(existing().Monteur_Cred_Id)/missions/$(taskId))
+        )
+      );
+
+      allow delete: if isAdmin() && isValidId(taskId);
+    }
+
+    // =========================================================================
+    // Collection: /monteur_accounts/{accountId} (Strict Admin-Only PII Directory)
+    // =========================================================================
+    match /monteur_accounts/{accountId} {
+      allow get: if isAdmin() && isValidId(accountId);
+      allow list: if isAdmin();
+
+      allow create: if isAdmin()
+        && isValidId(accountId)
+        && isValidMonteurAccount(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(accountId)
+        && isValidMonteurAccount(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'nom',
+          'phone',
+          'accessCode',
+          'credId',
+          'active',
+          'email',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(accountId);
+    }
+
+    // =========================================================================
+    // Collection: /monteur_credentials/{credId} (SHA-256 Secret Keyed Auth)
+    // =========================================================================
+    match /monteur_credentials/{credId} {
+      // Never listable by non-admin; single get requires knowing the 256-bit SHA-256 credId
+      allow get: if isAdmin() || isValidCredId(credId);
+      allow list: if isAdmin();
+
+      allow create: if isAdmin()
+        && isValidCredId(credId)
+        && isValidMonteurCredential(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidCredId(credId) && isValidMonteurCredential(incoming()) && (
+        (
+          isAdmin()
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'phone',
+            'nom',
+            'active',
+            'disponible',
+            'updatedAt'
+          ])
+        ) || (
+          // Action: Active monteur toggles their own availability (Disponible / Non disponible)
+          existing().active == true
+          && incoming().active == true
+          && incoming().phone == existing().phone
+          && incoming().nom == existing().nom
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['disponible', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isAdmin() && isValidCredId(credId);
+
+      // Subcollection: /monteur_credentials/{credId}/invites/{taskId}
+      match /invites/{taskId} {
+        allow get, list: if isAdmin() || isValidCredId(credId);
+
+        allow create: if isValidCredId(credId) && isValidId(taskId) && isValidTaskInvite(incoming()) && incoming().taskId == taskId && incoming().createdAt == request.time && incoming().updatedAt == request.time && (
+          isAdmin() || (
+            exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && exists(/databases/$(database)/documents/tasks/$(taskId))
+            && get(/databases/$(database)/documents/tasks/$(taskId)).data.Statut in ['Assigned', 'En cours']
+            && get(/databases/$(database)/documents/tasks/$(taskId)).data.WhatsApp_Contacte == false
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'Ouverte'
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.phone in get(/databases/$(database)/documents/tasks/$(taskId)).data.Monteurs_Autorises
+          )
+        );
+
+        allow update: if isAdmin()
+          && isValidCredId(credId)
+          && isValidId(taskId)
+          && isValidTaskInvite(incoming())
+          && incoming().taskId == taskId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time;
+
+        allow delete: if isValidCredId(credId) && isValidId(taskId) && (
+          isAdmin() || (
+            exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && (
+              !exists(/databases/$(database)/documents/tasks/$(taskId))
+              || get(/databases/$(database)/documents/tasks/$(taskId)).data.Statut != 'Ouverte'
+              || getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'Assigned'
+            )
+          )
+        );
+      }
+
+      // Subcollection: /monteur_credentials/{credId}/missions/{taskId}
+      match /missions/{taskId} {
+        allow get, list: if isAdmin() || isValidCredId(credId);
+
+        allow create: if isValidCredId(credId) && isValidId(taskId) && isValidAssignedMission(incoming()) && (
+          isAdmin() || (
+            incoming().taskId == taskId
+            && incoming().Statut == 'Assigned'
+            && incoming().WhatsApp_Contacte == false
+            && incoming().Chef_Monteur_Confirme == false
+            && incoming().createdAt == request.time
+            && incoming().updatedAt == request.time
+            && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && exists(/databases/$(database)/documents/tasks/$(taskId))
+            && get(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'Ouverte'
+            && incoming().Visibilite == get(/databases/$(database)/documents/tasks/$(taskId)).data.Visibilite
+            && (
+              get(/databases/$(database)/documents/tasks/$(taskId)).data.Visibilite == 'Tous' || (
+                get(/databases/$(database)/documents/tasks/$(taskId)).data.Visibilite == 'Selection'
+                && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.phone in get(/databases/$(database)/documents/tasks/$(taskId)).data.Monteurs_Autorises
+              )
+            )
+            && incoming().Prix_DZD == get(/databases/$(database)/documents/tasks/$(taskId)).data.Prix_DZD
+            && incoming().ID_Tache == get(/databases/$(database)/documents/tasks/$(taskId)).data.ID_Tache
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'Assigned'
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Monteur_Cred_Id == credId
+            && incoming().Claim_Deadline_Ms == getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Claim_Deadline_Ms
+          )
+        );
+
+        allow update: if isValidCredId(credId) && isValidId(taskId) && isValidAssignedMission(incoming()) && (
+          (
+            isAdmin()
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+          ) || (
+            existing().Statut in ['Assigned', 'In progress', 'En cours']
+            && incoming().Statut in ['Assigned', 'In progress']
+            && (
+              (existing().Statut == 'En cours' && incoming().Statut == 'Assigned') ||
+              (existing().Statut in ['Assigned', 'In progress'] && incoming().Statut == existing().Statut)
+            )
+            && existing().WhatsApp_Contacte == false
+            && incoming().WhatsApp_Contacte == true
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['Statut', 'WhatsApp_Contacte', 'updatedAt'])
+            && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.WhatsApp_Contacte == true
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == incoming().Statut
+          ) || (
+            existing().Statut in ['Assigned', 'En cours']
+            && existing().WhatsApp_Contacte == true
+            && existing().Chef_Monteur_Confirme == true
+            && incoming().Statut == 'In progress'
+            && incoming().Claim_Deadline_Ms == 0
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly(['Statut', 'Claim_Deadline_Ms', 'updatedAt'])
+            && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'In progress'
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Monteur_Cred_Id == credId
+          )
+        );
+
+        allow delete: if isValidCredId(credId) && isValidId(taskId) && (
+          isAdmin() || (
+            existing().Statut in ['Assigned', 'En cours']
+            && existing().WhatsApp_Contacte == false
+            && existing().Claim_Deadline_Ms > 0
+            && request.time.toMillis() >= existing().Claim_Deadline_Ms
+            && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+            && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+            && getAfter(/databases/$(database)/documents/tasks/$(taskId)).data.Statut == 'Ouverte'
+          )
+        );
+      }
+
+      // Subcollection: /monteur_credentials/{credId}/prefs/{prefId}
+      match /prefs/{prefId} {
+        allow get: if isAdmin() || (isValidCredId(credId) && prefId == 'hidden');
+
+        allow create: if (isAdmin() || (
+          isValidCredId(credId)
+          && prefId == 'hidden'
+          && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+          && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+        )) && isValidHiddenPref(incoming()) && incoming().updatedAt == request.time;
+
+        allow update: if (isAdmin() || (
+          isValidCredId(credId)
+          && prefId == 'hidden'
+          && exists(/databases/$(database)/documents/monteur_credentials/$(credId))
+          && get(/databases/$(database)/documents/monteur_credentials/$(credId)).data.active == true
+        )) && isValidHiddenPref(incoming())
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['hiddenTaskIds', 'updatedAt']);
+      }
+    }
+  }
+}
